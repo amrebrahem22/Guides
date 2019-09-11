@@ -1,4 +1,4 @@
-## Models
+# Models
 *A model is the single, definitive source of information about your data. It contains the essential fields and behaviors of the data you’re storing. Generally, each model maps to a single database table.*
 ``` python 
 from django.db import models
@@ -83,11 +83,11 @@ In older versions, this field doesn’t permit null=True, so you have to use Nul
 `DateField.auto_now_add` </br>
 *Automatically set the field to now when the object is first created. Useful for creation of timestamps. Note that the current date is always used; it’s not just a default value that you can override. So even if you set a value for this field when creating the object, it will be ignored. If you want to be able to modify this field, set the following instead of auto_now_add=True:* </br>
 ``` python
-# For DateField: default=date.today - 
-from datetime.date.today()
-# For DateTimeField: default=timezone.now - 
-from django.utils.timezone.now()
-``` </br>
+    # For DateField: default=date.today - 
+    from datetime.date.today()
+    # For DateTimeField: default=timezone.now  
+    from django.utils.timezone.now()
+```
 *The default form widget for this field is a TextInput. The admin adds a JavaScript calendar, and a shortcut for “Today”. Includes an additional invalid_date error message key.* </br>
 *The options auto_now_add, auto_now, and default are mutually exclusive. Any combination of these options will result in an error.* </br>
 **Note** </br>
@@ -137,12 +137,12 @@ class MyModel(models.Model):
     # or...
     # file will be saved to MEDIA_ROOT/uploads/2015/01/30
     upload = models.FileField(upload_to='uploads/%Y/%m/%d/')
-``
+```
 *If you are using the default FileSystemStorage, the string value will be appended to your MEDIA_ROOT path to form the location on the local filesystem where uploaded files will be stored. If you are using a different storage, check that storage’s documentation to see how it handles upload_to.* </br>
 *upload_to may also be a callable, such as a function. This will be called to obtain the upload path, including the filename. This callable must accept two arguments and return a Unix-style path (with forward slashes) to be passed along to the storage system. The two arguments are:* </br>
-* **instance : ** An instance of the model where the FileField is defined. More specifically, this is the particular instance where the current file is being attached. </br>
-In most cases, this object will not have been saved to the database yet, so if it uses the default AutoField, it might not yet have a value for its primary key field.* </br>
-* **filename : ** The filename that was originally given to the file. This may or may not be taken into account when determining the final destination path.* </br>
+**instance :  An instance of the model where the FileField is defined. More specifically, this is the particular instance where the current file is being attached. </br>
+In most cases, this object will not have been saved to the database yet, so if it uses the default AutoField, it might not yet have a value for its primary key field. **</br>
+**filename :  The filename that was originally given to the file. This may or may not be taken into account when determining the final destination path.** </br>
 *For Example: * </br>
 ``` python
 def user_directory_path(instance, filename):
@@ -151,7 +151,7 @@ def user_directory_path(instance, filename):
 
 class MyModel(models.Model):
     upload = models.FileField(upload_to=user_directory_path)
-``` </br>
+```
 `FileField.storage`</br>
 
 #### FloatField
