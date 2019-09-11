@@ -719,6 +719,159 @@ contact_info = JSONField("ContactInfo", default=contact_default)
 #### Registering and fetching lookups
 *Field implements the lookup registration API. The API can be used to customize which lookups are available for a field class, and how lookups are fetched from a field.*
 
+## Model Meta options
+*This document explains all the possible metadata options that you can give your model in its internal class Meta.*
+
+### Available Meta options
+#### abstract
+**Options.abstract**
+*If abstract = True, this model will be an abstract base class.*
+
+#### app_label
+**Options.app_label**
+*If a model is defined outside of an application in INSTALLED_APPS, it must declare which app it belongs to:*
+``` python
+app_label = 'myapp'
+```
+*If you want to represent a model with the format app_label.object_name or app_label.model_name you can use model._meta.label or model._meta.label_lower respectively.*
+
+#### base_manager_name
+**Options.base_manager_name**
+*The attribute name of the manager, for example, 'objects', to use for the model’s _base_manager.*
+
+#### db_table
+**Options.db_table**
+*The name of the database table to use for the model:*
+
+`db_table = 'music_album'`
+</br>
+*Table names*
+*To save you time, Django automatically derives the name of the database table from the name of your model class and the app that contains it. A model’s database table name is constructed by joining the model’s “app label” – the name you used in manage.py startapp – to the model’s class name, with an underscore between them.* </br>
+*For example, if you have an app bookstore (as created by manage.py startapp bookstore), a model defined as class Book will have a database table named bookstore_book.* </br>
+*To override the database table name, use the db_table parameter in class Meta.*
+
+#### default_manager_name
+**Options.default_manager_name**
+*The name of the manager to use for the model’s _default_manager.*
+
+#### default_related_name
+**Options.default_related_name**
+*The name that will be used by default for the relation from a related object back to this one. The default is <model_name>_set.* </br>
+*This option also sets related_query_name.* </br>
+*As the reverse name for a field should be unique, be careful if you intend to subclass your model. To work around name collisions, part of the name should contain '%(app_label)s' and '%(model_name)s', which are replaced respectively by the name of the application the model is in, and the name of the model, both lowercased. See the paragraph on related names for abstract models.*
+
+#### get_latest_by
+**Options.get_latest_by**
+*The name of a field or a list of field names in the model, typically DateField, DateTimeField, or IntegerField. This specifies the default field(s) to use in your model Manager’s latest() and earliest() methods.*
+</br>
+*Example:*
+``` python
+# Latest by ascending order_date.
+get_latest_by = "order_date"
+
+# Latest by priority descending, order_date ascending.
+get_latest_by = ['-priority', 'order_date']
+```
+#### order_with_respect_to
+**Options.order_with_respect_to**
+*Makes this object orderable with respect to the given field, usually a ForeignKey. This can be used to make related objects orderable with respect to a parent object. For example, if an Answer relates to a Question object, and a question has more than one answer, and the order of answers matters, you’d do this:*
+``` python
+from django.db import models
+
+class Question(models.Model):
+    text = models.TextField()
+    # ...
+
+class Answer(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    # ...
+
+    class Meta:
+        order_with_respect_to = 'question'
+```
+*When order_with_respect_to is set, two additional methods are provided to retrieve and to set the order of the related objects: get_RELATED_order() and set_RELATED_order(), where RELATED is the lowercased model name. For example, assuming that a Question object has multiple related Answer objects, the list returned contains the primary keys of the related Answer objects:*
+``` python
+>>> question = Question.objects.get(id=1)
+>>> question.get_answer_order()
+[1, 2, 3]
+```
+*The order of a Question object’s related Answer objects can be set by passing in a list of Answer primary keys:*
+``` python
+>>> question.set_answer_order([3, 1, 2])
+```
+*The related objects also get two methods, get_next_in_order() and get_previous_in_order(), which can be used to access those objects in their proper order. Assuming the Answer objects are ordered by id:*
+``` python
+>>> answer = Answer.objects.get(id=2)
+>>> answer.get_next_in_order()
+<Answer: 3>
+>>> answer.get_previous_in_order()
+<Answer: 1>
+```
+
+#### ordering
+**Options.ordering**
+*The default ordering for the object, for use when obtaining lists of objects:* </br>
+`ordering = ['-order_date']`
+*This is a tuple or list of strings and/or query expressions. Each string is a field name with an optional “-” prefix, which indicates descending order. Fields without a leading “-” will be ordered ascending. Use the string “?” to order randomly.* </br>
+
+*For example, to order by a pub_date field ascending, use this:* </br>
+`ordering = ['pub_date']`
+</br>
+*To order by pub_date descending, use this:* </br>
+`ordering = ['-pub_date']`
+</br>
+*To order by pub_date descending, then by author ascending, use this:* </br>
+`ordering = ['-pub_date', 'author']`
+</br>
+*You can also use query expressions. To order by author ascending and make null values sort last, use this:*
+``` python
+from django.db.models import F
+
+ordering = [F('author').asc(nulls_last=True)]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
