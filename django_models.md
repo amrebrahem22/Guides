@@ -830,30 +830,312 @@ from django.db.models import F
 ordering = [F('author').asc(nulls_last=True)]
 ```
 
+##### permissions
+**Options.permissions**
+*Extra permissions to enter into the permissions table when creating this object. Add, change, delete, and view permissions are automatically created for each model. This example specifies an extra permission, can_deliver_pizzas:*
+</br>
+``` python
+permissions = [('can_deliver_pizzas', 'Can deliver pizzas')]
+```
+*This is a list or tuple of 2-tuples in the format (permission_code, human_readable_permission_name).*
 
+##### default_permissions
+**Options.default_permissions**
+*Defaults to ('add', 'change', 'delete', 'view'). You may customize this list, for example, by setting this to an empty list if your app doesn’t require any of the default permissions. It must be specified on the model before the model is created by migrate in order to prevent any omitted permissions from being created.*
+</br>
+*Changed in Django 2.1:*
+*The view permission was added.*
 
+##### proxy
+**Options.proxy**
+*If proxy = True, a model which subclasses another model will be treated as a proxy model.*
 
+##### required_db_features
+**Options.required_db_features**
+*List of database features that the current connection should have so that the model is considered during the migration phase. For example, if you set this list to `['gis_enabled']`, the model will only be synchronized on GIS-enabled databases. It’s also useful to skip some models when testing with several database backends. Avoid relations between models that may or may not be created as the ORM doesn’t handle this.*
 
+##### required_db_vendor
+**Options.required_db_vendor**
+*Name of a supported database vendor that this model is specific to. Current built-in vendor names are: sqlite, postgresql, mysql, oracle. If this attribute is not empty and the current connection vendor doesn’t match it, the model will not be synchronized.*
 
+##### select_on_save
+**Options.select_on_save**
+*Determines if Django will use the pre-1.6 `django.db.models.Model.save() algorithm`. The old algorithm uses SELECT to determine if there is an existing row to be updated. The new algorithm tries an UPDATE directly. In some rare cases the UPDATE of an existing row isn’t visible to Django. An example is the PostgreSQL ON UPDATE trigger which returns NULL. In such cases the new algorithm will end up doing an INSERT even when a row exists in the database.*
+</br>
+*Usually there is no need to set this attribute. The default is False.*
 
+##### indexes
+**Options.indexes**
+*A list of indexes that you want to define on the model:*
+``` python
+from django.db import models
 
+class Customer(models.Model):
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['last_name', 'first_name']),
+            models.Index(fields=['first_name'], name='first_name_idx'),
+        ]
+```
 
+##### unique_together
+**Options.unique_together**
+*se UniqueConstraint with the constraints option instead.*
+</br>
+UniqueConstraint provides more functionality than unique_together. unique_together may be deprecated in the future.*
+</br>
+*Sets of field names that, taken together, must be unique:*
+</br>
+`unique_together = [['driver', 'restaurant']]`
+*This is a list of lists that must be unique when considered together. It’s used in the Django admin and is enforced at the database level (i.e., the appropriate UNIQUE statements are included in the CREATE TABLE statement).*
+</br>
+*For convenience, unique_together can be a single list when dealing with a single set of fields:*
+</br>
+`unique_together = ['driver', 'restaurant']`
+*A ManyToManyField cannot be included in unique_together. (It’s not clear what that would even mean!) If you need to validate uniqueness related to a ManyToManyField, try using a signal or an explicit through model.*
+</br>
+*The ValidationError raised during model validation when the constraint is violated has the unique_together error code.*
 
+##### verbose_name
+**Options.verbose_name**
+*A human-readable name for the object, singular:*
+</br>
+`verbose_name = "pizza"`
+</br>
+*If this isn’t given, Django will use a munged version of the class name: CamelCase becomes camel case.*
 
+##### verbose_name_plural
+**Options.verbose_name_plural**
+*The plural name for the object:*
+</br>
+`verbose_name_plural = "stories"`
+</br>
+*If this isn’t given, Django will use verbose_name + "s".*
 
+#### Read-only Meta attributes
+##### label
+**Options.label**
+*Representation of the object, returns app_label.object_name, e.g. 'polls.Question'.*
 
+##### label_lower
+**Options.label_lower**
+*Representation of the model, returns app_label.model_name, e.g. 'polls.question'.*
 
+### Model methods
+*Define custom methods on a model to add custom “row-level” functionality to your objects. Whereas Manager methods are intended to do “table-wide” things, model methods should act on a particular model instance.* </br>
+*This is a valuable technique for keeping business logic in one place – the model.* </br>
+*For example, this model has a few custom methods:*
+``` python
+from django.db import models
 
+class Person(models.Model):
+    first_name = models.CharField(max_length=50)
+    last_name = models.CharField(max_length=50)
+    birth_date = models.DateField()
 
+    def baby_boomer_status(self):
+        "Returns the person's baby-boomer status."
+        import datetime
+        if self.birth_date < datetime.date(1945, 8, 1):
+            return "Pre-boomer"
+        elif self.birth_date < datetime.date(1965, 1, 1):
+            return "Baby boomer"
+        else:
+            return "Post-boomer"
 
+    @property
+    def full_name(self):
+        "Returns the person's full name."
+        return '%s %s' % (self.first_name, self.last_name)
+```
+*The last method in this example is a property.* </br>
+*The model instance reference has a complete list of methods automatically given to each model. You can override most of these – see overriding predefined model methods, below – but there are a couple that you’ll almost always want to define:*
 
+#### __str__()
+**Model.__str__()**
+*The` __str__()` method is called whenever you call str() on an object. Django uses str(obj) in a number of places. Most notably, to display an object in the Django admin site and as the value inserted into a template when it displays an object. Thus, you should always return a nice, human-readable representation of the model from the` __str__()` method.*
+</br>
+For example:
+``` python
+from django.db import models
 
+class Person(models.Model):
+    first_name = models.CharField(max_length=50)
+    last_name = models.CharField(max_length=50)
 
+    def __str__(self):
+        return '%s %s' % (self.first_name, self.last_name)
+```
 
+#### Creating objects
+*To create a new instance of a model, just instantiate it like any other Python class:* </br>
+**`class Model(**kwargs)`**
+*The keyword arguments are simply the names of the fields you’ve defined on your model. Note that instantiating a model in no way touches your database; for that, you need to save().* </br>
 
+*Note* </br>
 
+*You may be tempted to customize the model by overriding the __init__ method. If you do so, however, take care not to change the calling signature as any change may prevent the model instance from being saved. Rather than overriding __init__, try using one of these approaches:* </br>
 
+*Add a classmethod on the model class:*
+``` python
+from django.db import models
+
+class Book(models.Model):
+    title = models.CharField(max_length=100)
+
+    @classmethod
+    def create(cls, title):
+        book = cls(title=title)
+        # do something with the book
+        return book
+
+book = Book.create("Pride and Prejudice")
+```
+*Add a method on a custom manager (usually preferred):*
+``` python
+class BookManager(models.Manager):
+    def create_book(self, title):
+        book = self.create(title=title)
+        # do something with the book
+        return book
+
+class Book(models.Model):
+    title = models.CharField(max_length=100)
+
+    objects = BookManager()
+
+book = Book.objects.create_book("Pride and Prejudice")
+```
+
+#### Refreshing objects from database
+*If you delete a field from a model instance, accessing it again reloads the value from the database:*
+``` python
+>>> obj = MyModel.objects.first()
+>>> del obj.field
+>>> obj.field  # Loads the field from the database
+```
+**`Model.refresh_from_db(using=None, fields=None)`**
+*If you need to reload a model’s values from the database, you can use the refresh_from_db() method. When this method is called without arguments the following is done:* </br>
+
+*All non-deferred fields of the model are updated to the values currently present in the database.* </br>
+*Any cached relations are cleared from the reloaded instance.* </br>
+*Only fields of the model are reloaded from the database. Other database-dependent values such as annotations aren’t reloaded. Any @cached_property attributes aren’t cleared either.* </br>
+
+*The reloading happens from the database the instance was loaded from, or from the default database if the instance wasn’t loaded from the database. The using argument can be used to force the database used for reloading.* </br>
+*It is possible to force the set of fields to be loaded by using the fields argument.* </br>
+*For example, to test that an update() call resulted in the expected update, you could write a test similar to this:*
+
+### Validating objects
+There are three steps involved in validating a model:
+</br>
+Validate the model fields - Model.clean_fields() </br>
+Validate the model as a whole - Model.clean() </br>
+Validate the field uniqueness - Model.validate_unique() </br>
+All three steps are performed when you call a model’s full_clean() method.
+</br>
+When you use a ModelForm, the call to is_valid() will perform these validation steps for all the fields that are included on the form. See the ModelForm documentation for more information. You should only need to call a model’s full_clean() method if you plan to handle validation errors yourself, or if you have excluded fields from the ModelForm that require validation.
+
+**`Model.full_clean(exclude=None, validate_unique=True)`**
+This method calls Model.clean_fields(), Model.clean(), and Model.validate_unique() (if validate_unique is True), in that order and raises a ValidationError that has a message_dict attribute containing errors from all three stages.
+</br>
+The optional exclude argument can be used to provide a list of field names that can be excluded from validation and cleaning. ModelForm uses this argument to exclude fields that aren’t present on your form from being validated since any errors raised could not be corrected by the user.
+</br>
+Note that full_clean() will not be called automatically when you call your model’s save() method. You’ll need to call it manually when you want to run one-step model validation for your own manually created models. For example:
+</br>
+``` python
+from django.core.exceptions import ValidationError
+try:
+    article.full_clean()
+except ValidationError as e:
+    # Do something based on the errors contained in e.message_dict.
+    # Display them to a user, or handle them programmatically.
+    pass
+```
+The first step full_clean() performs is to clean each individual field.
+</br>
+**`Model.clean_fields(exclude=None)`**
+This method will validate all fields on your model. The optional exclude argument lets you provide a list of field names to exclude from validation. It will raise a ValidationError if any fields fail validation.
+</br>
+The second step full_clean() performs is to call Model.clean(). This method should be overridden to perform custom validation on your model.
+
+#### Model.clean()
+This method should be used to provide custom model validation, and to modify attributes on your model if desired. For instance, you could use it to automatically provide a value for a field, or to do validation that requires access to more than a single field:
+``` python
+import datetime
+from django.core.exceptions import ValidationError
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+class Article(models.Model):
+    ...
+    def clean(self):
+        # Don't allow draft entries to have a pub_date.
+        if self.status == 'draft' and self.pub_date is not None:
+            raise ValidationError(_('Draft entries may not have a publication date.'))
+        # Set the pub_date for published items if it hasn't been set already.
+        if self.status == 'published' and self.pub_date is None:
+            self.pub_date = datetime.date.today()
+ ```
+Note, however, that like Model.full_clean(), a model’s clean() method is not invoked when you call your model’s save() method.
+</br>
+In the above example, the ValidationError exception raised by Model.clean() was instantiated with a string, so it will be stored in a special error dictionary key, NON_FIELD_ERRORS. This key is used for errors that are tied to the entire model instead of to a specific field:
+</br>
+``` python
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
+try:
+    article.full_clean()
+except ValidationError as e:
+    non_field_errors = e.message_dict[NON_FIELD_ERRORS]
+```
+To assign exceptions to a specific field, instantiate the ValidationError with a dictionary, where the keys are the field names. We could update the previous example to assign the error to the pub_date field:
+``` python
+class Article(models.Model):
+    ...
+    def clean(self):
+        # Don't allow draft entries to have a pub_date.
+        if self.status == 'draft' and self.pub_date is not None:
+            raise ValidationError({'pub_date': _('Draft entries may not have a publication date.')})
+        ...
+```
+If you detect errors in multiple fields during Model.clean(), you can also pass a dictionary mapping field names to errors:
+``` python
+raise ValidationError({
+    'title': ValidationError(_('Missing title.'), code='required'),
+    'pub_date': ValidationError(_('Invalid date.'), code='invalid'),
+})
+```
+Finally, full_clean() will check any unique constraints on your model.
+</br>
+How to raise field-specific validation errors if those fields don’t appear in a ModelForm
+</br>
+You can’t raise validation errors in Model.clean() for fields that don’t appear in a model form (a form may limit its fields using Meta.fields or Meta.exclude). Doing so will raise a ValueError because the validation error won’t be able to be associated with the excluded field.
+</br>
+To work around this dilemma, instead override Model.clean_fields() as it receives the list of fields that are excluded from validation. For example:
+``` python
+class Article(models.Model):
+    ...
+    def clean_fields(self, exclude=None):
+        super().clean_fields(exclude=exclude)
+        if self.status == 'draft' and self.pub_date is not None:
+            if exclude and 'status' in exclude:
+                raise ValidationError(
+                    _('Draft entries may not have a publication date.')
+                )
+            else:
+                raise ValidationError({
+                    'status': _(
+                        'Set status to draft if there is not a '
+                        'publication date.'
+                     ),
+                })
+```
+**Model.validate_unique(exclude=None)**
+This method is similar to clean_fields(), but validates all uniqueness constraints on your model instead of individual field values. The optional exclude argument allows you to provide a list of field names to exclude from validation. It will raise a ValidationError if any fields fail validation.
+</br>
+Note that if you provide an exclude argument to validate_unique(), any unique_together constraint involving one of the fields you provided will not be checked.
 
 
 
