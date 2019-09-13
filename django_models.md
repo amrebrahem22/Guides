@@ -1137,31 +1137,209 @@ This method is similar to clean_fields(), but validates all uniqueness constrain
 </br>
 Note that if you provide an exclude argument to validate_unique(), any unique_together constraint involving one of the fields you provided will not be checked.
 
+### Saving objects
+To save an object back to the database, call save():
+</br>
+**Model.save(force_insert=False, force_update=False, using=DEFAULT_DB_ALIAS, update_fields=None)**
+If you want customized saving behavior, you can override this save() method. See Overriding predefined model methods for more details.
+</br>
+The model save process also has some subtleties; see the sections below.
+</br>
+**Auto-incrementing primary keys**
+</br>
+If a model has an AutoField — an auto-incrementing primary key — then that auto-incremented value will be calculated and saved as an attribute on your object the first time you call save():
+``` python
+>>> b2 = Blog(name='Cheddar Talk', tagline='Thoughts on cheese.')
+>>> b2.id     # Returns None, because b2 doesn't have an ID yet.
+>>> b2.save()
+>>> b2.id     # Returns the ID of your new object.
+```
+There’s no way to tell what the value of an ID will be before you call save(), because that value is calculated by your database, not by Django.
+</br>
+For convenience, each model has an AutoField named id by default unless you explicitly specify primary_key=True on a field in your model. See the documentation for AutoField for more details.
+</br>
+**The pk property**
+**Model.pk**
+</br>
+Regardless of whether you define a primary key field yourself, or let Django supply one for you, each model will have a property called pk. It behaves like a normal attribute on the model, but is actually an alias for whichever attribute is the primary key field for the model. You can read and set this value, just as you would for any other attribute, and it will update the correct field in the model.
+</br>
+**Explicitly specifying auto-primary-key values**
+</br>
+If a model has an AutoField but you want to define a new object’s ID explicitly when saving, just define it explicitly before saving, rather than relying on the auto-assignment of the ID:
+``` python
+>>> b3 = Blog(id=3, name='Cheddar Talk', tagline='Thoughts on cheese.')
+>>> b3.id     # Returns 3.
+>>> b3.save()
+>>> b3.id     # Returns 3.
+```
+If you assign auto-primary-key values manually, make sure not to use an already-existing primary-key value! If you create a new object with an explicit primary-key value that already exists in the database, Django will assume you’re changing the existing record rather than creating a new one.
+</br>
+Given the above 'Cheddar Talk' blog example, this example would override the previous record in the database:
+``` python
+b4 = Blog(id=3, name='Not Cheddar', tagline='Anything but cheese.')
+b4.save()  # Overrides the previous blog with ID=3!
+```
+See How Django knows to UPDATE vs. INSERT, below, for the reason this happens.
+</br>
+Explicitly specifying auto-primary-key values is mostly useful for bulk-saving objects, when you’re confident you won’t have primary-key collision.
+</br>
+If you’re using PostgreSQL, the sequence associated with the primary key might need to be updated; see Manually-specifying values of auto-incrementing primary keys.
+</br>
+**What happens when you save?**
+</br>
+When you save an object, Django performs the following steps:
+</br>
+Emit a pre-save signal. The pre_save signal is sent, allowing any functions listening for that signal to do something.
+</br>
+Preprocess the data. Each field’s pre_save() method is called to perform any automated data modification that’s needed. For example, the date/time fields override pre_save() to implement auto_now_add and auto_now.
+</br>
+Prepare the data for the database. Each field’s get_db_prep_save() method is asked to provide its current value in a data type that can be written to the database.
+</br>
+Most fields don’t require data preparation. Simple data types, such as integers and strings, are ‘ready to write’ as a Python object. However, more complex data types often require some modification.
+</br>
+For example, DateField fields use a Python datetime object to store data. Databases don’t store datetime objects, so the field value must be converted into an ISO-compliant date string for insertion into the database.
+</br>
+Insert the data into the database. The preprocessed, prepared data is composed into an SQL statement for insertion into the database.
+</br>
+Emit a post-save signal. The post_save signal is sent, allowing any functions listening for that signal to do something.
+</br>
+**How Django knows to UPDATE vs. INSERT**
+</br>
+You may have noticed Django database objects use the same save() method for creating and changing objects. Django abstracts the need to use INSERT or UPDATE SQL statements. Specifically, when you call save(), Django follows this algorithm:
+</br>
+If the object’s primary key attribute is set to a value that evaluates to True (i.e., a value other than None or the empty string), Django executes an UPDATE. </br>
+If the object’s primary key attribute is not set or if the UPDATE didn’t update anything (e.g. if primary key is set to a value that doesn’t exist in the database), Django executes an INSERT. </br>
+The one gotcha here is that you should be careful not to specify a primary-key value explicitly when saving new objects, if you cannot guarantee the primary-key value is unused. For more on this nuance, see Explicitly specifying auto-primary-key values above and Forcing an INSERT or UPDATE below. </br>
 
+In Django 1.5 and earlier, Django did a SELECT when the primary key attribute was set. If the SELECT found a row, then Django did an UPDATE, otherwise it did an INSERT. The old algorithm results in one more query in the UPDATE case. There are some rare cases where the database doesn’t report that a row was updated even if the database contains a row for the object’s primary key value. An example is the PostgreSQL ON UPDATE trigger which returns NULL. In such cases it is possible to revert to the old algorithm by setting the select_on_save option to True. </br>
 
+**Forcing an INSERT or UPDATE**
+In some rare circumstances, it’s necessary to be able to force the save() method to perform an SQL INSERT and not fall back to doing an UPDATE. Or vice-versa: update, if possible, but not insert a new row. In these cases you can pass the force_insert=True or force_update=True parameters to the save() method. Obviously, passing both parameters is an error: you cannot both insert and update at the same time! </br>
 
+It should be very rare that you’ll need to use these parameters. Django will almost always do the right thing and trying to override that will lead to errors that are difficult to track down. This feature is for advanced use only. </br>
 
+Using update_fields will force an update similarly to force_update. </br>
 
+**Updating attributes based on existing fields**
+Sometimes you’ll need to perform a simple arithmetic task on a field, such as incrementing or decrementing the current value. The obvious way to achieve this is to do something like:
+``` python
+>>> product = Product.objects.get(name='Venezuelan Beaver Cheese')
+>>> product.number_sold += 1
+>>> product.save()
+```
+If the old number_sold value retrieved from the database was 10, then the value of 11 will be written back to the database.
+</br>
+The process can be made robust, avoiding a race condition, as well as slightly faster by expressing the update relative to the original field value, rather than as an explicit assignment of a new value. Django provides F expressions for performing this kind of relative update. Using F expressions, the previous example is expressed as:
+``` python
+>>> from django.db.models import F
+>>> product = Product.objects.get(name='Venezuelan Beaver Cheese')
+>>> product.number_sold = F('number_sold') + 1
+>>> product.save()
+```
+For more details, see the documentation on F expressions and their use in update queries.
+</br>
+**Specifying which fields to save**
+</br>
+If save() is passed a list of field names in keyword argument update_fields, only the fields named in that list will be updated. This may be desirable if you want to update just one or a few fields on an object. There will be a slight performance benefit from preventing all of the model fields from being updated in the database. For example:
+``` python
+product.name = 'Name changed again'
+product.save(update_fields=['name'])
+```
+The update_fields argument can be any iterable containing strings. An empty update_fields iterable will skip the save. A value of None will perform an update on all fields.
+</br>
+Specifying update_fields will force an update.
+</br>
+When saving a model fetched through deferred model loading (only() or defer()) only the fields loaded from the DB will get updated. In effect there is an automatic update_fields in this case. If you assign or change any deferred field value, the field will be added to the updated fields.
+</br>
+### Deleting objects
+**Model.delete(using=DEFAULT_DB_ALIAS, keep_parents=False)**
+Issues an SQL DELETE for the object. This only deletes the object in the database; the Python instance will still exist and will still have data in its fields. This method returns the number of objects deleted and a dictionary with the number of deletions per object type.
+</br>
+For more details, including how to delete objects in bulk, see Deleting objects.
+</br>
+If you want customized deletion behavior, you can override the delete() method. See Overriding predefined model methods for more details.
+</br>
+Sometimes with multi-table inheritance you may want to delete only a child model’s data. Specifying keep_parents=True will keep the parent model’s data.
 
+### __hash__()
+#### Model.__hash__()
+The __hash__() method is based on the instance’s primary key value. It is effectively hash(obj.pk). If the instance doesn’t have a primary key value then a TypeError will be raised (otherwise the __hash__() method would return different values before and after the instance is saved, but changing the __hash__() value of an instance is forbidden in Python.
 
+### get_absolute_url()
+#### Model.get_absolute_url()
+Define a get_absolute_url() method to tell Django how to calculate the canonical URL for an object. To callers, this method should appear to return a string that can be used to refer to the object over HTTP.
+</br>
+For example:
+``` python
+def get_absolute_url(self):
+    return "/people/%i/" % self.id
+```
+While this code is correct and simple, it may not be the most portable way to to write this kind of method. The reverse() function is usually the best approach.
+</br>
+For example:
+``` python
+def get_absolute_url(self):
+    from django.urls import reverse
+    return reverse('people.views.details', args=[str(self.id)])
+```
+One place Django uses get_absolute_url() is in the admin app. If an object defines this method, the object-editing page will have a “View on site” link that will jump you directly to the object’s public view, as given by get_absolute_url().
+</br>
+Similarly, a couple of other bits of Django, such as the syndication feed framework, use get_absolute_url() when it is defined. If it makes sense for your model’s instances to each have a unique URL, you should define get_absolute_url().
+</br>
+Warning
+</br>
+You should avoid building the URL from unvalidated user input, in order to reduce possibilities of link or redirect poisoning:
+``` python
+def get_absolute_url(self):
+    return '/%s/' % self.name
+```
+If self.name is '/example.com' this returns '//example.com/' which, in turn, is a valid schema relative URL but not the expected '/%2Fexample.com/'.
+</br>
+It’s good practice to use get_absolute_url() in templates, instead of hard-coding your objects’ URLs. For example, this template code is bad:
+``` python
+<!-- BAD template code. Avoid! -->
+<a href="/people/{{ object.id }}/">{{ object.name }}</a>
+```
+This template code is much better:
+``` python
+<a href="{{ object.get_absolute_url }}">{{ object.name }}</a>
+```
+The logic here is that if you change the URL structure of your objects, even for something simple such as correcting a spelling error, you don’t want to have to track down every place that the URL might be created. Specify it once, in get_absolute_url() and have all your other code call that one place.
 
+#### Model.get_FOO_display()
+For every field that has choices set, the object will have a get_FOO_display() method, where FOO is the name of the field. This method returns the “human-readable” value of the field.
+</br>
+For example:
+``` python
+from django.db import models
 
+class Person(models.Model):
+    SHIRT_SIZES = (
+        ('S', 'Small'),
+        ('M', 'Medium'),
+        ('L', 'Large'),
+    )
+    name = models.CharField(max_length=60)
+    shirt_size = models.CharField(max_length=2, choices=SHIRT_SIZES)
+>>> p = Person(name="Fred Flintstone", shirt_size="L")
+>>> p.save()
+>>> p.shirt_size
+'L'
+>>> p.get_shirt_size_display()
+'Large'
+```
+**`Model.get_next_by_FOO(**kwargs)`** </br>
+**`Model.get_previous_by_FOO(**kwargs)`** </br>
+For every DateField and DateTimeField that does not have null=True, the object will have get_next_by_FOO() and get_previous_by_FOO() methods, where FOO is the name of the field. This returns the next and previous object with respect to the date field, raising a DoesNotExist exception when appropriate.
+</br>
+Both of these methods will perform their queries using the default manager for the model. If you need to emulate filtering used by a custom manager, or want to perform one-off custom filtering, both methods also accept optional keyword arguments, which should be in the format described in Field lookups.
+</br>
+Note that in the case of identical date values, these methods will use the primary key as a tie-breaker. This guarantees that no records are skipped or duplicated. That also means you cannot use those methods on unsaved objects.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#### Other attributes
+#### DoesNotExist
+**`exception Model.DoesNotExist`**
+</br>
+This exception is raised by the ORM in a couple places, for example by QuerySet.get() when an object is not found for the given query parameters.
+</br>
+Django provides a DoesNotExist exception as an attribute of each model class to identify the class of object that could not be found and to allow you to catch a particular model class with try/except. The exception is a subclass of `django.core.exceptions.ObjectDoesNotExist.`
