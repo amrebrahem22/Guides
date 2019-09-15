@@ -551,67 +551,78 @@ However, unlike F() objects in filter and exclude clauses, you can’t introduce
 >>> Entry.objects.update(headline=F('blog__name'))
 ```
 
-Related objects¶
+### Related objects
 When you define a relationship in a model (i.e., a ForeignKey, OneToOneField, or ManyToManyField), instances of that model will have a convenient API to access the related object(s).
-
+</br>
 Using the models at the top of this page, for example, an Entry object e can get its associated Blog object by accessing the blog attribute: e.blog.
-
+</br>
 (Behind the scenes, this functionality is implemented by Python descriptors. This shouldn’t really matter to you, but we point it out here for the curious.)
-
+</br>
 Django also creates API accessors for the “other” side of the relationship – the link from the related model to the model that defines the relationship. For example, a Blog object b has access to a list of all related Entry objects via the entry_set attribute: b.entry_set.all().
-
+</br>
 All examples in this section use the sample Blog, Author and Entry models defined at the top of this page.
 
-One-to-many relationships¶
-Forward¶
+#### One-to-many relationships
+</br>
+**Forward**
+</br>
 If a model has a ForeignKey, instances of that model will have access to the related (foreign) object via a simple attribute of the model.
-
+</br>
 Example:
-
+``` python
 >>> e = Entry.objects.get(id=2)
 >>> e.blog # Returns the related Blog object.
+```
 You can get and set via a foreign-key attribute. As you may expect, changes to the foreign key aren’t saved to the database until you call save(). Example:
-
+``` python
 >>> e = Entry.objects.get(id=2)
 >>> e.blog = some_blog
 >>> e.save()
+```
 If a ForeignKey field has null=True set (i.e., it allows NULL values), you can assign None to remove the relation. Example:
-
+``` python
 >>> e = Entry.objects.get(id=2)
 >>> e.blog = None
 >>> e.save() # "UPDATE blog_entry SET blog_id = NULL ...;"
+```
 Forward access to one-to-many relationships is cached the first time the related object is accessed. Subsequent accesses to the foreign key on the same object instance are cached. Example:
-
+``` python
 >>> e = Entry.objects.get(id=2)
 >>> print(e.blog)  # Hits the database to retrieve the associated Blog.
 >>> print(e.blog)  # Doesn't hit the database; uses cached version.
+```
 Note that the select_related() QuerySet method recursively prepopulates the cache of all one-to-many relationships ahead of time. Example:
-
+``` python
 >>> e = Entry.objects.select_related().get(id=2)
 >>> print(e.blog)  # Doesn't hit the database; uses cached version.
 >>> print(e.blog)  # Doesn't hit the database; uses cached version.
-Following relationships “backward”¶
+```
+</br>
+**Following relationships “backward”**
+</br>
 If a model has a ForeignKey, instances of the foreign-key model will have access to a Manager that returns all instances of the first model. By default, this Manager is named FOO_set, where FOO is the source model name, lowercased. This Manager returns QuerySets, which can be filtered and manipulated as described in the “Retrieving objects” section above.
-
+</br>
 Example:
-
+``` python
 >>> b = Blog.objects.get(id=1)
 >>> b.entry_set.all() # Returns all Entry objects related to Blog.
 
 # b.entry_set is a Manager that returns QuerySets.
 >>> b.entry_set.filter(headline__contains='Lennon')
 >>> b.entry_set.count()
+```
 You can override the FOO_set name by setting the related_name parameter in the ForeignKey definition. For example, if the Entry model was altered to blog = ForeignKey(Blog, on_delete=models.CASCADE, related_name='entries'), the above example code would look like this:
-
+``` python
 >>> b = Blog.objects.get(id=1)
 >>> b.entries.all() # Returns all Entry objects related to Blog.
 
 # b.entries is a Manager that returns QuerySets.
 >>> b.entries.filter(headline__contains='Lennon')
 >>> b.entries.count()
-Using a custom reverse manager¶
+```
+#### Using a custom reverse manager
 By default the RelatedManager used for reverse relations is a subclass of the default manager for that model. If you would like to specify a different manager for a given query you can use the following syntax:
-
+``` python
 from django.db import models
 
 class Entry(models.Model):
@@ -621,39 +632,53 @@ class Entry(models.Model):
 
 b = Blog.objects.get(id=1)
 b.entry_set(manager='entries').all()
+```
 If EntryManager performed default filtering in its get_queryset() method, that filtering would apply to the all() call.
-
+</br>
 Of course, specifying a custom reverse manager also enables you to call its custom methods:
-
-b.entry_set(manager='entries').is_published()
-Additional methods to handle related objects¶
+</br>
+</br>
+`b.entry_set(manager='entries').is_published()`
+</br>
+#### Additional methods to handle related objects
 In addition to the QuerySet methods defined in “Retrieving objects” above, the ForeignKey Manager has additional methods used to handle the set of related objects. A synopsis of each is below, and complete details can be found in the related objects reference.
 
-add(obj1, obj2, ...)
+</br>
+`add(obj1, obj2, ...)`
+</br>
 Adds the specified model objects to the related object set.
-create(**kwargs)
+</br>
+`create(**kwargs)`
+</br>
 Creates a new object, saves it and puts it in the related object set. Returns the newly created object.
-remove(obj1, obj2, ...)
+</br>
+`remove(obj1, obj2, ...)`
+</br>
 Removes the specified model objects from the related object set.
-clear()
+</br>
+`clear()`
+</br>
 Removes all objects from the related object set.
-set(objs)
+</br>
+`set(objs)`
+</br>
 Replace the set of related objects.
 To assign the members of a related set, use the set() method with an iterable of object instances. For example, if e1 and e2 are Entry instances:
-
+``` python
 b = Blog.objects.get(id=1)
 b.entry_set.set([e1, e2])
+```
 If the clear() method is available, any pre-existing objects will be removed from the entry_set before all objects in the iterable (in this case, a list) are added to the set. If the clear() method is not available, all objects in the iterable will be added without removing any existing elements.
-
+</br>
 Each “reverse” operation described in this section has an immediate effect on the database. Every addition, creation and deletion is immediately and automatically saved to the database.
 
-How are the backward relationships possible?¶
+#### How are the backward relationships possible?
 Other object-relational mappers require you to define relationships on both sides. The Django developers believe this is a violation of the DRY (Don’t Repeat Yourself) principle, so Django only requires you to define the relationship on one end.
-
+</br>
 But how is this possible, given that a model class doesn’t know which other model classes are related to it until those other model classes are loaded?
-
+</br>
 The answer lies in the app registry. When Django starts, it imports each application listed in INSTALLED_APPS, and then the models module inside each application. Whenever a new model class is created, Django adds backward-relationships to any related models. If the related models haven’t been imported yet, Django keeps tracks of the relationships and adds them when the related models eventually are imported.
-
+</br>
 For this reason, it’s particularly important that all the models you’re using be defined in applications listed in INSTALLED_APPS. Otherwise, backwards relations may not work properly.
 
 
