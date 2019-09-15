@@ -341,17 +341,320 @@ pk lookups also work across joins. For example, these three statements are equiv
 >>> Entry.objects.filter(blog__pk=3)        # __pk implies __id__exact
 ```
 
+#### Caching and QuerySets
+Each QuerySet contains a cache to minimize database access. Understanding how it works will allow you to write the most efficient code.
+</br>
+In a newly created QuerySet, the cache is empty. The first time a QuerySet is evaluated – and, hence, a database query happens – Django saves the query results in the QuerySet’s cache and returns the results that have been explicitly requested (e.g., the next element, if the QuerySet is being iterated over). Subsequent evaluations of the QuerySet reuse the cached results.
+</br>
+Keep this caching behavior in mind, because it may bite you if you don’t use your QuerySets correctly. For example, the following will create two QuerySets, evaluate them, and throw them away:
+``` python
+>>> print([e.headline for e in Entry.objects.all()])
+>>> print([e.pub_date for e in Entry.objects.all()])
+```
+That means the same database query will be executed twice, effectively doubling your database load. Also, there’s a possibility the two lists may not include the same database records, because an Entry may have been added or deleted in the split second between the two requests.
+</br>
+To avoid this problem, simply save the QuerySet and reuse it:
+``` python
+>>> queryset = Entry.objects.all()
+>>> print([p.headline for p in queryset]) # Evaluate the query set.
+>>> print([p.pub_date for p in queryset]) # Re-use the cache from the evaluation.
+```
+#### When QuerySets are not cached
+Querysets do not always cache their results. When evaluating only part of the queryset, the cache is checked, but if it is not populated then the items returned by the subsequent query are not cached. Specifically, this means that limiting the queryset using an array slice or an index will not populate the cache.
+</br>
+For example, repeatedly getting a certain index in a queryset object will query the database each time:
+``` python
+>>> queryset = Entry.objects.all()
+>>> print(queryset[5]) # Queries the database
+>>> print(queryset[5]) # Queries the database again
+```
+However, if the entire queryset has already been evaluated, the cache will be checked instead:
+``` python
+>>> queryset = Entry.objects.all()
+>>> [entry for entry in queryset] # Queries the database
+>>> print(queryset[5]) # Uses cache
+>>> print(queryset[5]) # Uses cache
+```
+Here are some examples of other actions that will result in the entire queryset being evaluated and therefore populate the cache:
+``` python
+>>> [entry for entry in queryset]
+>>> bool(queryset)
+>>> entry in queryset
+>>> list(queryset)
+```
 
+### Complex lookups with Q objects
+Keyword argument queries – in filter(), etc. – are “AND”ed together. If you need to execute more complex queries (for example, queries with OR statements), you can use Q objects.
+</br>
+A Q object (django.db.models.Q) is an object used to encapsulate a collection of keyword arguments. These keyword arguments are specified as in “Field lookups” above.
+</br>
+For example, this Q object encapsulates a single LIKE query:
+``` python
+from django.db.models import Q
+Q(question__startswith='What')
+```
+Q objects can be combined using the & and | operators. When an operator is used on two Q objects, it yields a new Q object.
+</br>
+For example, this statement yields a single Q object that represents the “OR” of two "question__startswith" queries:
+``` python
+Q(question__startswith='Who') | Q(question__startswith='What')
+```
+This is equivalent to the following SQL WHERE clause:
+``` sql
+WHERE question LIKE 'Who%' OR question LIKE 'What%'
+```
+You can compose statements of arbitrary complexity by combining Q objects with the & and | operators and use parenthetical grouping. Also, Q objects can be negated using the ~ operator, allowing for combined lookups that combine both a normal query and a negated (NOT) query:
+``` python
+Q(question__startswith='Who') | ~Q(pub_date__year=2005)
+```
+Each lookup function that takes keyword-arguments (e.g. filter(), exclude(), get()) can also be passed one or more Q objects as positional (not-named) arguments. If you provide multiple Q object arguments to a lookup function, the arguments will be “AND”ed together. For example:
+``` python
+Poll.objects.get(
+    Q(question__startswith='Who'),
+    Q(pub_date=date(2005, 5, 2)) | Q(pub_date=date(2005, 5, 6))
+)
+```
+… roughly translates into the SQL:
+``` python
+SELECT * from polls WHERE question LIKE 'Who%'
+    AND (pub_date = '2005-05-02' OR pub_date = '2005-05-06')
+ ```
+Lookup functions can mix the use of Q objects and keyword arguments. All arguments provided to a lookup function (be they keyword arguments or Q objects) are “AND”ed together. However, if a Q object is provided, it must precede the definition of any keyword arguments. For example:
+``` python
+Poll.objects.get(
+    Q(pub_date=date(2005, 5, 2)) | Q(pub_date=date(2005, 5, 6)),
+    question__startswith='Who',
+)
+```
+… would be a valid query, equivalent to the previous example; but:
+``` python
+# INVALID QUERY
+Poll.objects.get(
+    question__startswith='Who',
+    Q(pub_date=date(2005, 5, 2)) | Q(pub_date=date(2005, 5, 6))
+)
+```
+… would not be valid.
 
+### Comparing objects
+To compare two model instances, just use the standard Python comparison operator, the double equals sign: ==. Behind the scenes, that compares the primary key values of two models.
+</br>
+Using the Entry example above, the following two statements are equivalent:
+``` python
+>>> some_entry == other_entry
+>>> some_entry.id == other_entry.id
+```
+If a model’s primary key isn’t called id, no problem. Comparisons will always use the primary key, whatever it’s called. For example, if a model’s primary key field is called name, these two statements are equivalent:
+``` python
+>>> some_obj == other_obj
+>>> some_obj.name == other_obj.name
+```
+### Deleting objects
+The delete method, conveniently, is named delete(). This method immediately deletes the object and returns the number of objects deleted and a dictionary with the number of deletions per object type. Example:
+``` python
+>>> e.delete()
+(1, {'weblog.Entry': 1})
+```
+You can also delete objects in bulk. Every QuerySet has a delete() method, which deletes all members of that QuerySet.
 
+For example, this deletes all Entry objects with a pub_date year of 2005:
+``` python
+>>> Entry.objects.filter(pub_date__year=2005).delete()
+(5, {'webapp.Entry': 5})
+```
+Keep in mind that this will, whenever possible, be executed purely in SQL, and so the delete() methods of individual object instances will not necessarily be called during the process. If you’ve provided a custom delete() method on a model class and want to ensure that it is called, you will need to “manually” delete instances of that model (e.g., by iterating over a QuerySet and calling delete() on each object individually) rather than using the bulk delete() method of a QuerySet.
+</br>
+When Django deletes an object, by default it emulates the behavior of the SQL constraint ON DELETE CASCADE – in other words, any objects which had foreign keys pointing at the object to be deleted will be deleted along with it. For example:
+``` python
+b = Blog.objects.get(pk=1)
+# This will delete the Blog and all of its Entry objects.
+b.delete()
+```
+This cascade behavior is customizable via the on_delete argument to the ForeignKey.
+</br>
+Note that delete() is the only QuerySet method that is not exposed on a Manager itself. This is a safety mechanism to prevent you from accidentally requesting Entry.objects.delete(), and deleting all the entries. If you do want to delete all the objects, then you have to explicitly request a complete query set:
+``` python
+Entry.objects.all().delete()
+```
 
+### Copying model instances
+Although there is no built-in method for copying model instances, it is possible to easily create new instance with all fields’ values copied. In the simplest case, you can just set pk to None. Using our blog example:
+``` python
+blog = Blog(name='My blog', tagline='Blogging is easy')
+blog.save() # blog.pk == 1
 
+blog.pk = None
+blog.save() # blog.pk == 2
+```
+Things get more complicated if you use inheritance. Consider a subclass of Blog:
+``` python
+class ThemeBlog(Blog):
+    theme = models.CharField(max_length=200)
 
+django_blog = ThemeBlog(name='Django', tagline='Django is easy', theme='python')
+django_blog.save() # django_blog.pk == 3
+```
+Due to how inheritance works, you have to set both pk and id to None:
+``` python
+django_blog.pk = None
+django_blog.id = None
+django_blog.save() # django_blog.pk == 4
+```
+This process doesn’t copy relations that aren’t part of the model’s database table. For example, Entry has a ManyToManyField to Author. After duplicating an entry, you must set the many-to-many relations for the new entry:
+``` python
+entry = Entry.objects.all()[0] # some previous entry
+old_authors = entry.authors.all()
+entry.pk = None
+entry.save()
+entry.authors.set(old_authors)
+```
+For a OneToOneField, you must duplicate the related object and assign it to the new object’s field to avoid violating the one-to-one unique constraint. For example, assuming entry is already duplicated as above:
+``` python
+detail = EntryDetail.objects.all()[0]
+detail.pk = None
+detail.entry = entry
+detail.save()
+```
 
+### Updating multiple objects at once
+Sometimes you want to set a field to a particular value for all the objects in a QuerySet. You can do this with the update() method. For example:
+``` python
+# Update all the headlines with pub_date in 2007.
+Entry.objects.filter(pub_date__year=2007).update(headline='Everything is the same')
+```
+You can only set non-relation fields and ForeignKey fields using this method. To update a non-relation field, provide the new value as a constant. To update ForeignKey fields, set the new value to be the new model instance you want to point to. For example:
+``` python
+>>> b = Blog.objects.get(pk=1)
 
+# Change every Entry so that it belongs to this Blog.
+>>> Entry.objects.all().update(blog=b)
+```
+The update() method is applied instantly and returns the number of rows matched by the query (which may not be equal to the number of rows updated if some rows already have the new value). The only restriction on the QuerySet being updated is that it can only access one database table: the model’s main table. You can filter based on related fields, but you can only update columns in the model’s main table. Example:
+``` python
+>>> b = Blog.objects.get(pk=1)
 
+# Update all the headlines belonging to this Blog.
+>>> Entry.objects.select_related().filter(blog=b).update(headline='Everything is the same')
+```
+Be aware that the update() method is converted directly to an SQL statement. It is a bulk operation for direct updates. It doesn’t run any save() methods on your models, or emit the pre_save or post_save signals (which are a consequence of calling save()), or honor the auto_now field option. If you want to save every item in a QuerySet and make sure that the save() method is called on each instance, you don’t need any special function to handle that. Just loop over them and call save():
+``` python
+for item in my_queryset:
+    item.save()
+    ```
+Calls to update can also use F expressions to update one field based on the value of another field in the model. This is especially useful for incrementing counters based upon their current value. For example, to increment the pingback count for every entry in the blog:
+``` python
+>>> Entry.objects.all().update(n_pingbacks=F('n_pingbacks') + 1)
+```
+However, unlike F() objects in filter and exclude clauses, you can’t introduce joins when you use F() objects in an update – you can only reference fields local to the model being updated. If you attempt to introduce a join with an F() object, a FieldError will be raised:
+``` python
+# This will raise a FieldError
+>>> Entry.objects.update(headline=F('blog__name'))
+```
 
+Related objects¶
+When you define a relationship in a model (i.e., a ForeignKey, OneToOneField, or ManyToManyField), instances of that model will have a convenient API to access the related object(s).
 
+Using the models at the top of this page, for example, an Entry object e can get its associated Blog object by accessing the blog attribute: e.blog.
+
+(Behind the scenes, this functionality is implemented by Python descriptors. This shouldn’t really matter to you, but we point it out here for the curious.)
+
+Django also creates API accessors for the “other” side of the relationship – the link from the related model to the model that defines the relationship. For example, a Blog object b has access to a list of all related Entry objects via the entry_set attribute: b.entry_set.all().
+
+All examples in this section use the sample Blog, Author and Entry models defined at the top of this page.
+
+One-to-many relationships¶
+Forward¶
+If a model has a ForeignKey, instances of that model will have access to the related (foreign) object via a simple attribute of the model.
+
+Example:
+
+>>> e = Entry.objects.get(id=2)
+>>> e.blog # Returns the related Blog object.
+You can get and set via a foreign-key attribute. As you may expect, changes to the foreign key aren’t saved to the database until you call save(). Example:
+
+>>> e = Entry.objects.get(id=2)
+>>> e.blog = some_blog
+>>> e.save()
+If a ForeignKey field has null=True set (i.e., it allows NULL values), you can assign None to remove the relation. Example:
+
+>>> e = Entry.objects.get(id=2)
+>>> e.blog = None
+>>> e.save() # "UPDATE blog_entry SET blog_id = NULL ...;"
+Forward access to one-to-many relationships is cached the first time the related object is accessed. Subsequent accesses to the foreign key on the same object instance are cached. Example:
+
+>>> e = Entry.objects.get(id=2)
+>>> print(e.blog)  # Hits the database to retrieve the associated Blog.
+>>> print(e.blog)  # Doesn't hit the database; uses cached version.
+Note that the select_related() QuerySet method recursively prepopulates the cache of all one-to-many relationships ahead of time. Example:
+
+>>> e = Entry.objects.select_related().get(id=2)
+>>> print(e.blog)  # Doesn't hit the database; uses cached version.
+>>> print(e.blog)  # Doesn't hit the database; uses cached version.
+Following relationships “backward”¶
+If a model has a ForeignKey, instances of the foreign-key model will have access to a Manager that returns all instances of the first model. By default, this Manager is named FOO_set, where FOO is the source model name, lowercased. This Manager returns QuerySets, which can be filtered and manipulated as described in the “Retrieving objects” section above.
+
+Example:
+
+>>> b = Blog.objects.get(id=1)
+>>> b.entry_set.all() # Returns all Entry objects related to Blog.
+
+# b.entry_set is a Manager that returns QuerySets.
+>>> b.entry_set.filter(headline__contains='Lennon')
+>>> b.entry_set.count()
+You can override the FOO_set name by setting the related_name parameter in the ForeignKey definition. For example, if the Entry model was altered to blog = ForeignKey(Blog, on_delete=models.CASCADE, related_name='entries'), the above example code would look like this:
+
+>>> b = Blog.objects.get(id=1)
+>>> b.entries.all() # Returns all Entry objects related to Blog.
+
+# b.entries is a Manager that returns QuerySets.
+>>> b.entries.filter(headline__contains='Lennon')
+>>> b.entries.count()
+Using a custom reverse manager¶
+By default the RelatedManager used for reverse relations is a subclass of the default manager for that model. If you would like to specify a different manager for a given query you can use the following syntax:
+
+from django.db import models
+
+class Entry(models.Model):
+    #...
+    objects = models.Manager()  # Default Manager
+    entries = EntryManager()    # Custom Manager
+
+b = Blog.objects.get(id=1)
+b.entry_set(manager='entries').all()
+If EntryManager performed default filtering in its get_queryset() method, that filtering would apply to the all() call.
+
+Of course, specifying a custom reverse manager also enables you to call its custom methods:
+
+b.entry_set(manager='entries').is_published()
+Additional methods to handle related objects¶
+In addition to the QuerySet methods defined in “Retrieving objects” above, the ForeignKey Manager has additional methods used to handle the set of related objects. A synopsis of each is below, and complete details can be found in the related objects reference.
+
+add(obj1, obj2, ...)
+Adds the specified model objects to the related object set.
+create(**kwargs)
+Creates a new object, saves it and puts it in the related object set. Returns the newly created object.
+remove(obj1, obj2, ...)
+Removes the specified model objects from the related object set.
+clear()
+Removes all objects from the related object set.
+set(objs)
+Replace the set of related objects.
+To assign the members of a related set, use the set() method with an iterable of object instances. For example, if e1 and e2 are Entry instances:
+
+b = Blog.objects.get(id=1)
+b.entry_set.set([e1, e2])
+If the clear() method is available, any pre-existing objects will be removed from the entry_set before all objects in the iterable (in this case, a list) are added to the set. If the clear() method is not available, all objects in the iterable will be added without removing any existing elements.
+
+Each “reverse” operation described in this section has an immediate effect on the database. Every addition, creation and deletion is immediately and automatically saved to the database.
+
+How are the backward relationships possible?¶
+Other object-relational mappers require you to define relationships on both sides. The Django developers believe this is a violation of the DRY (Don’t Repeat Yourself) principle, so Django only requires you to define the relationship on one end.
+
+But how is this possible, given that a model class doesn’t know which other model classes are related to it until those other model classes are loaded?
+
+The answer lies in the app registry. When Django starts, it imports each application listed in INSTALLED_APPS, and then the models module inside each application. Whenever a new model class is created, Django adds backward-relationships to any related models. If the related models haven’t been imported yet, Django keeps tracks of the relationships and adds them when the related models eventually are imported.
+
+For this reason, it’s particularly important that all the models you’re using be defined in applications listed in INSTALLED_APPS. Otherwise, backwards relations may not work properly.
 
 
 
