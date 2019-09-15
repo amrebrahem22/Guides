@@ -558,14 +558,14 @@ Using the models at the top of this page, for example, an Entry object e can get
 </br>
 (Behind the scenes, this functionality is implemented by Python descriptors. This shouldn’t really matter to you, but we point it out here for the curious.)
 </br>
-Django also creates API accessors for the “other” side of the relationship – the link from the related model to the model that defines the relationship. For example, a Blog object b has access to a list of all related Entry objects via the entry_set attribute: b.entry_set.all().
-</br>
+Django also creates API accessors for the “other” side of the relationship – the link from the related model to the model that defines the relationship. For example, a Blog object b has access to a list of all related Entry objects via the entry_set attribute: 
+``` python
+b.entry_set.all().
+```
 All examples in this section use the sample Blog, Author and Entry models defined at the top of this page.
 
 #### One-to-many relationships
-</br>
 #### Forward
-</br>
 If a model has a ForeignKey, instances of that model will have access to the related (foreign) object via a simple attribute of the model.
 </br>
 Example:
@@ -597,9 +597,8 @@ Note that the select_related() QuerySet method recursively prepopulates the cach
 >>> print(e.blog)  # Doesn't hit the database; uses cached version.
 >>> print(e.blog)  # Doesn't hit the database; uses cached version.
 ```
-</br>
-**`Following relationships “backward”`**
-</br>
+
+#### Following relationships “backward"
 If a model has a ForeignKey, instances of the foreign-key model will have access to a Manager that returns all instances of the first model. By default, this Manager is named FOO_set, where FOO is the source model name, lowercased. This Manager returns QuerySets, which can be filtered and manipulated as described in the “Retrieving objects” section above.
 </br>
 Example:
