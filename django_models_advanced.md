@@ -564,7 +564,7 @@ All examples in this section use the sample Blog, Author and Entry models define
 
 #### One-to-many relationships
 </br>
-**Forward**
+#### Forward
 </br>
 If a model has a ForeignKey, instances of that model will have access to the related (foreign) object via a simple attribute of the model.
 </br>
