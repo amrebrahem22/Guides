@@ -680,6 +680,42 @@ The answer lies in the app registry. When Django starts, it imports each applica
 </br>
 For this reason, it’s particularly important that all the models you’re using be defined in applications listed in INSTALLED_APPS. Otherwise, backwards relations may not work properly.
 
+# QuerySet API
+Here’s the formal declaration of a QuerySet:
+``` python
+class QuerySet(model=None, query=None, using=None)
+```
+Usually when you’ll interact with a QuerySet you’ll use it by chaining filters. To make this work, most QuerySet methods return new querysets. These methods are covered in detail later in this section.
+</br>
+The QuerySet class has two public attributes you can use for introspection:
+#### ordered
+True if the QuerySet is ordered — i.e. has an order_by() clause or a default ordering on the model. False otherwise.
+#### db
+The database that will be used if this query is executed now.
+
+## Methods that return new QuerySets
+Django provides a range of QuerySet refinement methods that modify either the types of results returned by the QuerySet or the way its SQL query is executed.
+
+### filter()
+#### `filter(**kwargs)`
+Returns a new QuerySet containing objects that match the given lookup parameters.
+</br>
+The lookup parameters (`**kwargs`) should be in the format described in Field lookups below. Multiple parameters are joined via AND in the underlying SQL statement.
+
+### exclude()
+#### `exclude(**kwargs)`
+Returns a new QuerySet containing objects that do not match the given lookup parameters.
+</br>
+The lookup parameters (`**kwargs`) should be in the format described in Field lookups below. Multiple parameters are joined via AND in the underlying SQL statement, and the whole thing is enclosed in a NOT().
+</br>
+This example excludes all entries whose pub_date is later than 2005-1-3 AND whose headline is “Hello”:
+``` python
+Entry.objects.exclude(pub_date__gt=datetime.date(2005, 1, 3), headline='Hello')
+```
+
+
+
+
 
 
 
