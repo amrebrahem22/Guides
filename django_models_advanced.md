@@ -540,7 +540,7 @@ Be aware that the update() method is converted directly to an SQL statement. It 
 ``` python
 for item in my_queryset:
     item.save()
-    ```
+```
 Calls to update can also use F expressions to update one field based on the value of another field in the model. This is especially useful for incrementing counters based upon their current value. For example, to increment the pingback count for every entry in the blog:
 ``` python
 >>> Entry.objects.all().update(n_pingbacks=F('n_pingbacks') + 1)
@@ -598,7 +598,7 @@ Note that the select_related() QuerySet method recursively prepopulates the cach
 >>> print(e.blog)  # Doesn't hit the database; uses cached version.
 ```
 </br>
-**Following relationships “backward”**
+**`Following relationships “backward”`**
 </br>
 If a model has a ForeignKey, instances of the foreign-key model will have access to a Manager that returns all instances of the first model. By default, this Manager is named FOO_set, where FOO is the source model name, lowercased. This Manager returns QuerySets, which can be filtered and manipulated as described in the “Retrieving objects” section above.
 </br>
@@ -637,9 +637,9 @@ If EntryManager performed default filtering in its get_queryset() method, that f
 </br>
 Of course, specifying a custom reverse manager also enables you to call its custom methods:
 </br>
-</br>
-`b.entry_set(manager='entries').is_published()`
-</br>
+``` python
+b.entry_set(manager='entries').is_published()
+```
 #### Additional methods to handle related objects
 In addition to the QuerySet methods defined in “Retrieving objects” above, the ForeignKey Manager has additional methods used to handle the set of related objects. A synopsis of each is below, and complete details can be found in the related objects reference.
 
