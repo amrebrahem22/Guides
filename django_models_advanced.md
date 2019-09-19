@@ -713,6 +713,61 @@ This example excludes all entries whose pub_date is later than 2005-1-3 AND whos
 Entry.objects.exclude(pub_date__gt=datetime.date(2005, 1, 3), headline='Hello')
 ```
 
+### order_by()
+#### order_by(*fields)
+By default, results returned by a QuerySet are ordered by the ordering tuple given by the ordering option in the model’s Meta. You can override this on a per-QuerySet basis by using the order_by method.
+</br>
+Example:
+``` python
+Entry.objects.filter(pub_date__year=2005).order_by('-pub_date', 'headline')
+```
+The result above will be ordered by pub_date descending, then by headline ascending. The negative sign in front of "-pub_date" indicates descending order. Ascending order is implied. To order randomly, use "?", like so:
+``` python
+Entry.objects.order_by('?')
+```
+Note: order_by('?') queries may be expensive and slow, depending on the database backend you’re using.
+</br>
+To order by a field in a different model, use the same syntax as when you are querying across model relations. That is, the name of the field, followed by a double underscore `(__)`, followed by the name of the field in the new model, and so on for as many models as you want to join. For example:
+``` python
+Entry.objects.order_by('blog__name', 'headline')
+```
+If you try to order by a field that is a relation to another model, Django will use the default ordering on the related model, or order by the related model’s primary key if there is no Meta.ordering specified. For example, since the Blog model has no default ordering specified:
+``` python
+Entry.objects.order_by('blog')
+```
+…is identical to:
+``` python
+Entry.objects.order_by('blog__id')
+```
+If Blog had `ordering = ['name']`, then the first queryset would be identical to:
+``` python
+Entry.objects.order_by('blog__name')
+```
+You can also order by query expressions by calling asc() or desc() on the expression:
+``` python
+Entry.objects.order_by(Coalesce('summary', 'headline').desc())
+```
+`asc()` and `desc()` have arguments (nulls_first and nulls_last) that control how null values are sorted.
+</br>
+Be cautious when ordering by fields in related models if you are also using `distinct()`. See the note in `distinct()` for an explanation of how related model ordering can change the expected results.
+
+### reverse()
+#### reverse()
+Use the reverse() method to reverse the order in which a queryset’s elements are returned. Calling reverse() a second time restores the ordering back to the normal direction.
+</br>
+To retrieve the “last” five items in a queryset, you could do this:
+``` python
+my_queryset.reverse()[:5]
+```
+Note that this is not quite the same as slicing from the end of a sequence in Python. The above example will return the last item first, then the penultimate item and so on. If we had a Python sequence and looked at seq[-5:], we would see the fifth-last item first. Django doesn’t support that mode of access (slicing from the end), because it’s not possible to do it efficiently in SQL.
+</br>
+Also, note that reverse() should generally only be called on a QuerySet which has a defined ordering (e.g., when querying against a model which defines a default ordering, or when using order_by()). If no such ordering is defined for a given QuerySet, calling reverse() on it has no real effect (the ordering was undefined prior to calling reverse(), and will remain undefined afterward).
+
+### distinct
+#### distinct(*fields
+Returns a new QuerySet that uses SELECT DISTINCT in its SQL query. This eliminates duplicate rows from the query results.
+
+By default, a QuerySet will not eliminate duplicate rows. In practice, this is rarely a problem, because simple queries such as Blog.objects.all() don’t introduce the possibility of duplicate result rows. However, if your query spans multiple tables, it’s possible to get duplicate results when a QuerySet is evaluated. That’s when you’d use distinct().
 
 
 
@@ -734,9 +789,7 @@ Entry.objects.exclude(pub_date__gt=datetime.date(2005, 1, 3), headline='Hello')
 
 
 
-
-
-
+`
 
 
 
